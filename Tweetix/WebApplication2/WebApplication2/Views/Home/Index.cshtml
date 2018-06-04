@@ -1,0 +1,405 @@
+﻿
+@{
+    ViewBag.Title = "Index";
+}
+
+<script type="text/javascript">
+
+    $(function () {
+
+        var locations2 = [];
+
+        var countries = []; countryMap = {}; trendsMap = {}; usersMap = {}; tweetLocationMap = {};
+
+        
+
+        $.post('/Home/CountryLookup', function (response) {
+
+            $.each(response, function (i, country) {
+                countryMap[country.name] = country;
+            });
+
+            $('#cmbCountries').typeahead({
+                minLength: 0,
+                maxItem: 8,
+                order: "asc",
+                hint: true,
+                accent: true,
+                searchOnFocus: true,
+                backdrop: {
+                    "background-color": "#3879d9",
+                    "opacity": "0.1",
+                    "filter": "alpha(opacity=10)"
+                },
+                displayKey: ["woeid"],
+                display: ["name"],
+                source: {
+                    data: response
+                },
+                callback: {
+                    onClickAfter: function (node, a, item, event) {
+
+                    }
+                    , onClick: function (node, item, event) {
+
+                        ShowLoader();
+
+                        document.getElementById('dvTrends').style.display = 'block';
+
+                        $('#txtWoeId').val(countryMap[item[0].textContent].woeid);
+
+                        FillTrends();
+                    },
+                    onCancel: function (node, item, event) {
+
+                        trendsMap = {};
+                        $('#txtWoeId').val();
+                    }
+                },
+                debug: true
+            });
+
+        });
+
+        function ShowLoader() {
+
+            document.getElementById('loader').style.display = 'block';
+        }
+
+        function HideLoader() {
+
+            document.getElementById('loader').style.display = 'none';
+        }
+
+
+        RateTweetBinder();
+
+        function FillTrends() {
+
+            $.post('/Home/TrendsLookup', { woeId: $('#txtWoeId').val() }, function (response) {
+
+                $.each(response, function (i, trend) {
+                    trendsMap[trend.Name] = trend;
+                });
+
+                $('#cmbTrends').typeahead({
+                    minLength: 0,
+                    maxItem: 12,
+                    order: "asc",
+                    hint: true,
+                    accent: true,
+                    searchOnFocus: true,
+                    backdrop: {
+                        "background-color": "#3879d9",
+                        "opacity": "0.1",
+                        "filter": "alpha(opacity=10)"
+                    },
+                    displayKey: ["Name"],
+                    display: ["Name"],
+                    source: {
+                        data: response
+                    },
+                    callback: {
+                        onClickAfter: function (node, a, item, event) {
+
+                        }
+                        , onClick: function (node, item, event) {
+
+                            ShowLoader();
+
+                            document.getElementById('dvUsersCategory').style.display = 'block';
+
+                            $('#txtTrendId').val(trendsMap[item[0].textContent].Query);
+
+                            FillTweetsLookup();
+                        },
+                        onCancel: function (node, item, event) {
+
+                            $('#cmbUserCategory').val();
+
+                            $('#cmbUser').val();
+
+                        }
+                    },
+                    debug: true
+                });
+
+                HideLoader();
+
+            });
+
+        }
+
+        function FillTweetsLookup() {
+
+            ShowLoader();
+
+            $.post('/Home/TweetsLookup', { trendId: $('#txtTrendId').val() }, function (response) {
+
+                MapTweetBinder(response);
+
+            });
+
+        }
+
+        function FillUsers() {
+
+            $.post('/Home/UserLookup', { country: $('#cmbCountries').val(), userCategory: $('#txtUserCategoryId').val(), trendString: $('#cmbTrends').val() }, function (response) {
+
+                $.each(response, function (i, user) {
+                    usersMap[user.Name] = user;
+                });
+
+                $('#cmbUsers').typeahead({
+                    minLength: 0,
+                    maxItem: 12,
+                    order: "asc",
+                    hint: true,
+                    accent: true,
+                    searchOnFocus: true,
+                    backdrop: {
+                        "background-color": "#3879d9",
+                        "opacity": "0.1",
+                        "filter": "alpha(opacity=10)"
+                    },
+                    displayKey: ["Name"],
+                    display: ["Name"],
+                    source: {
+                        data: response.users
+                    },
+                    callback: {
+                        onClickAfter: function (node, a, item, event) {
+
+                        }
+                        , onClick: function (node, item, event) {
+
+                            document.getElementById('dvUsers').style.display = 'block';
+
+                            $('#txtUserId').val(usersMap[item[0].textContent].Name);
+
+                            //Tweetler doldurulacak
+                        },
+                        onCancel: function (node, item, event) {
+
+                        }
+                    },
+                    debug: true
+                });
+
+                MapTweetBinder(response.tweetList);
+
+            });
+
+        }
+
+        function FillTweetsForUserLookup() {
+
+            ShowLoader();
+
+            $.post('/Home/TweetsForUserLookup', { userName: $('#cmbUsers').val() }, function (response) {
+
+                MapTweetBinder(response);
+
+            });
+        }
+
+        function MapTweetBinder(response) {
+
+            locations2 = [];
+
+            var map = new google.maps.Map(document.getElementById('map'), {
+                zoom: 5,
+                center: { lat: 41.015137, lng: 28.979530 }
+            });
+
+            var labels = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+            $.each(response, function (i, item) {
+
+                try {
+
+                    if (item.Lat != "") {
+                        $.getJSON('http://maps.googleapis.com/maps/api/geocode/json?address=' + item.Lat, null, function (data) {
+                            if (data.results.length > 0) {
+
+                                locations2.push(data.results[0].geometry.location);
+                            }
+                        });
+                    }
+
+                } catch (e) {
+
+                }
+
+            });
+
+            var myTable = "<table class='table'><thead><tr><th>User</th><th>Tweet</th><th>Location</th><th>Rate</th><th>Action</th></tr></thead><tbody>";
+
+            for (var i = 0; i < response.length; i++) {
+
+                myTable += "<tr><td>" + response[i].ScreenName + "</td><td>" + response[i].FullText + "</td><td>" + response[i].Lat + "</td><td><button class='glyphicon glyphicon-thumbs-up' onclick='UpVote(" + "\"" + response[i].ID.toString() + "\"" + ");'></button></td><td><button class='glyphicon glyphicon-thumbs-down' onclick='DownVote(" + "\"" + response[i].ID.toString() + "\"" + ");'></button></td></tr>";
+            }
+
+            myTable += "</tbody></table>";
+
+            document.getElementById('tablePrint').innerHTML = myTable;
+
+            document.getElementById('tablePrint').style.display = 'block';
+
+            setTimeout(function () {
+
+                var markers = locations2.map(function (location, i) {
+                    return new google.maps.Marker({
+                        position: location,
+                        label: labels[i % labels.length]
+                    });
+                });
+
+                var markerCluster = new MarkerClusterer(map, markers, { imagePath: 'https://developers.google.com/maps/documentation/javascript/examples/markerclusterer/m' });
+
+                document.getElementById('map').style.display = 'block';
+
+                map.setCenter(locations2[0]);
+
+                HideLoader();
+
+            }, 10000);
+
+        }
+
+        function RateTweetBinder() {
+
+            $.post('/Home/RateLookup', function (response) {
+
+                var myTable = "<table class='table'><thead><tr><th>User</th><th>Tweet</th><th>Location</th><th>Rate</th></tr></thead><tbody>";
+
+                for (var i = 0; i < response.length; i++) {
+
+                    myTable += "<tr><td>" + response[i].ScreenName + "</td><td>" + response[i].FullText + "</td><td>" + response[i].Lat + "</td><td>" + response[i].Point + "</td></tr>";
+                }
+
+                myTable += "</tbody></table>";
+
+                document.getElementById('rateTable').innerHTML = myTable;
+
+                document.getElementById('rateTable').style.display = 'block';
+
+            });
+
+           
+        }
+
+
+        $('select').on('change', function (e) {
+
+            ShowLoader();
+
+            $('#txtUserCategoryId').val(this.value);
+
+            document.getElementById('dvUsers').style.display = 'block';
+
+            FillUsers();
+        });
+
+    });
+
+</script>
+
+
+<div class="container">
+
+    <div id="globalFields" style="display:none">
+        <input id="txtWoeId" type="text" />
+        <input id="txtTrendId" type="text" />
+        <input id="txtUserCategoryId" type="text" />
+        <input id="txtUserId" type="text" />
+    </div>
+
+
+    <div class="form-group">
+        <label for="exampleInputCountry">Country</label>
+        <div class="typeahead__container">
+            <span class="typeahead__query">
+                <input class="form-control" id="cmbCountries" type="search" placeholder="Country" autocomplete="off">
+            </span>
+        </div>
+    </div>
+    <div id="dvTrends" style="display:none" class="form-group">
+        <label for="exampleInputTrends">Trends</label>
+        <div class="typeahead__container">
+            <span class="typeahead__query">
+                <input class="form-control" id="cmbTrends" type="search" placeholder="Trends" autocomplete="off">
+            </span>
+        </div>
+    </div>
+
+    <div id="dvUsersCategory" style="display:none" class="form-group">
+        <label for="exampleInputCat">Category</label>
+        <div class="typeahead__container">
+            <span class="typeahead__query">
+                <select class="form-control" id="cmbUserCategory">
+                    <option></option>
+                    <option>Journalist</option>
+                    <option>Politician</option>
+                    <option>Verify People</option>
+                    <option>Other</option>
+                </select>
+            </span>
+        </div>
+    </div>
+
+    <div id="dvUsers" style="display:none" class="form-group">
+        <label for="exampleInputTrends">Users</label>
+        <div class="typeahead__container">
+            <span class="typeahead__query">
+                <input class="form-control" id="cmbUsers" type="search" placeholder="Users" autocomplete="off">
+            </span>
+        </div>
+    </div>
+
+
+    <br />
+
+    <div id="map" style="height: 400px;width:100%;display:none"></div>
+    <br />
+
+
+
+    <div id="tablePrint" style="display:none"> </div>
+
+    <br /><br />
+
+    <div id="rateTable" style="display:none"> </div>
+
+</div>
+
+<div id="loader" style="position:absolute;left:0px;top:0px;bottom:0px;right:0px;display:none;background-color:white;z-index:9999999999999999999">
+
+    <img src="~/Content/kus.gif" style="display: block;margin-left: auto;margin-right: auto;width: 50%;" />
+
+</div>
+
+
+
+<script type="text/javascript">
+
+    function UpVote(tId) {
+
+        $.post('/Home/VoteTweet', { tId: tId, voteType: 'u' }, function (response) {
+
+            alert('Vote is successful !');
+
+        });
+    }
+
+    function DownVote(tId) {
+
+        $.post('/Home/VoteTweet', { tId: tId, voteType: 'd' }, function (response) {
+
+            alert('Vote is successful !');
+
+        });
+    }
+
+
+</script>
